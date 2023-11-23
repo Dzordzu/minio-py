@@ -79,6 +79,8 @@ _COMMAND = Enum(
         "SITE_REPLICATION_STATUS": "site-replication/status",
         "SITE_REPLICATION_EDIT": "site-replication/edit",
         "SITE_REPLICATION_REMOVE": "site-replication/remove",
+        "LDAP_ENTITIES": "idp/ldap/policy-entities",
+        "ENTITIES": "idp/builtin/policy-entities",
     },
 )
 
@@ -150,7 +152,8 @@ class MinioAdmin:
             "User-Agent": self._user_agent,
             "x-amz-date": time.to_amz_date(date),
             "x-amz-content-sha256": sha256_hash(body),
-            "Content-Type": "application/octet-stream"
+            "Content-Type": "application/octet-stream",
+            "Accept-Encoding": "zstd,gzip"
         }
         if creds.session_token:
             headers["X-Amz-Security-Token"] = creds.session_token
@@ -196,6 +199,7 @@ class MinioAdmin:
             body=body,
             headers=http_headers,
             preload_content=True,
+            decode_content=True
         )
 
         if self._trace_stream:
@@ -331,6 +335,22 @@ class MinioAdmin:
     def user_list(self):
         """List all users"""
         response = self._url_open("GET", _COMMAND.LIST_USERS)
+        plain_data = decrypt(
+            response.data, self._provider.retrieve().secret_key
+        )
+        return plain_data.decode()
+
+    def entities(self):
+        """List all users"""
+        response = self._url_open("GET", _COMMAND.ENTITIES)
+        plain_data = decrypt(
+            response.data, self._provider.retrieve().secret_key
+        )
+        return plain_data.decode()
+
+    def ldap_entities(self):
+        """List all users"""
+        response = self._url_open("GET", _COMMAND.LDAP_ENTITIES)
         plain_data = decrypt(
             response.data, self._provider.retrieve().secret_key
         )
