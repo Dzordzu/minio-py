@@ -20,6 +20,7 @@
 
 from __future__ import absolute_import
 
+import typing
 import json
 import os
 from datetime import timedelta
@@ -79,6 +80,8 @@ _COMMAND = Enum(
         "SITE_REPLICATION_STATUS": "site-replication/status",
         "SITE_REPLICATION_EDIT": "site-replication/edit",
         "SITE_REPLICATION_REMOVE": "site-replication/remove",
+        "ATTACH_LDAP_ENTITY": "idp/ldap/policy/attach",
+        "DETACH_LDAP_ENTITY": "idp/ldap/policy/detach",
         "LDAP_ENTITIES": "idp/ldap/policy-entities",
         "ENTITIES": "idp/builtin/policy-entities",
     },
@@ -356,6 +359,50 @@ class MinioAdmin:
         )
         return plain_data.decode()
 
+    def _ldap_policy_attach_or_detach(
+        self,
+        is_attach: bool,
+        policies: typing.List[str],
+        user: str,
+        group: str
+    ):
+
+        body = json.dumps({
+            "policies": policies,
+            "user": user,
+            "group": group
+        }).encode()
+
+        response = self._url_open(
+            "POST",
+            _COMMAND.ATTACH_LDAP_ENTITY if is_attach else _COMMAND.DETACH_LDAP_ENTITY,
+            body=encrypt(body, self._provider.retrieve().secret_key)
+        )
+
+        return decrypt(
+            response.data,
+            self._provider.retrieve().secret_key
+        ).decode()
+
+    def ldap_policy_attach(
+        self,
+        policies: typing.List[str],
+        user: str,
+        group: str
+    ):
+        """Attach policies to the ldap entity"""
+        return self._ldap_policy_attach_or_detach(True, policies, user, group)
+
+    def ldap_policy_detach(
+        self,
+        policies: typing.List[str],
+        user: str,
+        group: str
+    ):
+        """Detach policies from the ldap entity"""
+        return self._ldap_policy_attach_or_detach(False, policies, user, group)
+
+
     def group_add(self, group_name, members):
         """Add users a new or existing group."""
         body = json.dumps({
@@ -416,16 +463,20 @@ class MinioAdmin:
         response = self._url_open("GET", _COMMAND.LIST_GROUPS)
         return response.data.decode()
 
+    def policy_add_simple(self, policy_name, policy_json: str):
+        """Add a new policy using simple string."""
+        response = self._url_open(
+            "PUT",
+            _COMMAND.ADD_CANNED_POLICY,
+            query_params={"name": policy_name},
+            body=policy_json.encode(),
+        )
+        return response.data.decode()
+
     def policy_add(self, policy_name, policy_file):
-        """Add new policy."""
+        """Add a new policy using policy from the file."""
         with open(policy_file, encoding='utf-8') as file:
-            response = self._url_open(
-                "PUT",
-                _COMMAND.ADD_CANNED_POLICY,
-                query_params={"name": policy_name},
-                body=file.read().encode(),
-            )
-            return response.data.decode()
+            return self.policy_add_simple(policy_name, file.read())
 
     def policy_remove(self, policy_name):
         """Remove policy."""
